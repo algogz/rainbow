@@ -11,8 +11,8 @@ from datetime import datetime
 class FileDownloadHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         """Handle POST requests with target URL in body"""
-        if self.path != '/download':
-            self._send_error(404, "Not Found. Use /download endpoint")
+        if self.path != '/test':
+            self._send_error(404, "Not Found. Use /test endpoint")
             return
 
         try:
@@ -100,13 +100,13 @@ class FileDownloadHandler(BaseHTTPRequestHandler):
         print(f"[{self.log_date_time_string()}] {format % args}")
 
 
-def run_server(host='localhost', port=8080):
+def run_server(host='0.0.0.0', port=30080):
     """Start the HTTP server"""
     server_address = (host, port)
     httpd = HTTPServer(server_address, FileDownloadHandler)
 
     print(f"File Download Server started on http://{host}:{port}")
-    print("POST to /download with JSON body: {'url': 'https://example.com/file'}")
+    print("POST to /test with JSON body: {'url': 'https://example.com/file'}")
     print("Press Ctrl+C to stop the server")
 
     try:

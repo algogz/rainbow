@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script for the file download server
+Test script for the rainbow server
 """
 import requests
 import json
@@ -9,10 +9,10 @@ import os
 
 
 def test_server():
-    """Test the file download server"""
-    base_url = "http://localhost:8080"
+    """Test the rainbow server"""
+    base_url = "http://localhost:30080"
 
-    print("Testing File Download Server...")
+    print("Testing Rainbow Server...")
     print("=" * 50)
 
     # Test with a sample URL that will redirect
@@ -74,20 +74,6 @@ def test_server():
             print(f"✓ Real content saved to: {filename}")
             print(f"✓ File size on disk: {os.path.getsize(filename):,} bytes")
 
-            # Show a preview of the real content (first 200 bytes)
-            if real_content_size > 0:
-                print(f"✓ First 200 bytes of real content:")
-                try:
-                    # Try to decode as text first
-                    preview_text = real_content[:200].decode('utf-8', errors='replace')
-                    print(f"   Text preview: {preview_text[:100]}...")
-                except:
-                    # If not text, show as hex
-                    preview_hex = real_content[:50].hex()
-                    print(f"   Binary preview: {preview_hex}...")
-            else:
-                print("⚠ Warning: No real content found after random prefix")
-
             # Verify content integrity
             if real_content_size > 0:
                 print("✓ Response contains random prefix + real downloaded content")
@@ -107,7 +93,7 @@ def test_server():
 
 
 if __name__ == "__main__":
-    print("File Download Server Test Script")
+    print("Rainbow Server Test Script")
     print("Make sure the server is running (python3 main.py) before running this test.")
     print()
 
