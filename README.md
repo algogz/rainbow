@@ -2,6 +2,8 @@
 
 A simple Python web server that accepts HTTP POST requests to either download files from a URL or serve local files from the server's filesystem, with all responses prefixed with 1,024,000 bytes of random data.
 
+**Data Encoding**: The server uses a custom encoding scheme where the data parameter is base64-encoded and contains a reversed string with type prefix (`url:` or `path:`).
+
 ## Features
 
 - **HTTP POST Endpoint**: `/test` endpoint that accepts JSON requests
@@ -10,11 +12,11 @@ A simple Python web server that accepts HTTP POST requests to either download fi
 - **Random Prefix**: Prepends 1,024,000 bytes of random data to all file content
 - **Timestamp Filenames**: Generates response filenames with timestamp + original filename (e.g., `202511232358_example.pdf`)
 - **Security**: Path validation prevents directory traversal attacks
+- **Custom Encoding**: Uses reversed + base64 encoding for the data parameter
 - **Error Handling**: Comprehensive error handling with appropriate HTTP status codes
 
 ## Installation
 
-1. Install dependencies:
 ```bash
 pip3 install -e .
 ```
@@ -29,23 +31,71 @@ python3 main.py
 
 The server will start on `http://localhost:30080` by default.
 
-### Make Requests
+### Data Encoding Format
 
-Send POST requests to `/test` endpoint with JSON body.
+The server expects a single `data` parameter that contains:
+
+1. **Format**: `<type>:<value>` where type is either `url` or `path`
+2. **Process**:
+   - Start with: `url:https://example.com/file.pdf` or `path:/path/to/file`
+   - **Reverse the string**
+   - **Encode with base64**
+
+### Encoding Examples
+
+**Python Example:**
+```python
+import base64
+
+def encode_data(data_type, value):
+    """Encode data for the server request"""
+    # Create the data string with type prefix
+    data_str = f"{data_type}:{value}"
+    # Reverse the string
+    reversed_str = data_str[::-1]
+    # Encode to bytes and then base64
+    encoded_bytes = base64.b64encode(reversed_str.encode('utf-8'))
+    return encoded_bytes.decode('utf-8')
+
+# URL download example
+url_encoded = encode_data('url', 'https://example.com/file.pdf')
+
+# Local file example
+path_encoded = encode_data('path', './data/report.pdf')
+```
+
+**Bash Example:**
+```bash
+# Encode URL download request
+echo -n "url:https://example.com/file.pdf" | rev | base64
+
+# Encode local file request
+echo -n "path:/path/to/file" | rev | base64
+```
+
+### Make Requests
 
 **Download from URL:**
 ```bash
+# Step 1: Encode the data
+ENCODED_DATA=$(echo -n "url:https://httpbin.org/get" | rev | base64)
+
+# Step 2: Send the request
 curl -X POST http://localhost:30080/test \
   -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com/file.pdf"}' \
+  -d "{\"data\": \"$ENCODED_DATA\"}" \
   --output downloaded_file.dat
 ```
 
 **Serve local file:**
 ```bash
+# Step 1: Encode the data
+ENCODED_DATA=$(echo -n "path:/path/to/local/file.pdf" | rev | base64)
+
+# Step 2: Send the request
 curl -X POST http://localhost:30080/test \
   -H "Content-Type: application/json" \
-  -d '{"path": "/path/to/local/file.pdf"}' \
+  -d "{\"data\": \"$ENCODED_DATA\"}" \
   --output downloaded_file.dat
 ```
 
@@ -56,20 +106,17 @@ curl -X POST http://localhost:30080/test \
 **Headers**:
 - `Content-Type: application/json`
 
-**Body** (choose one):
+**Body**:
 ```json
 {
-  "url": "https://example.com/target-file"
+  "data": "<base64_encoded_reversed_string>"
 }
 ```
 
-OR
-
-```json
-{
-  "path": "/path/to/local/file"
-}
-```
+**Encoding Steps**:
+1. Create string: `url:<actual_url>` or `path:<file_path>`
+2. Reverse the entire string
+3. Encode the reversed string with base64
 
 **Security Note**: Local file serving is restricted to files within the server's current working directory by default. This can be configured by modifying the `BASE_DIR` constant in `main.py`.
 
@@ -81,10 +128,10 @@ OR
 - **Content**: 1,024,000 bytes of random data + file content
 
 **Error Responses**:
-- **400 Bad Request**: Invalid JSON, missing both 'url' and 'path', or both provided
+- **400 Bad Request**: Invalid JSON, missing 'data' field, or invalid data type prefix
 - **403 Forbidden**: Local file path is outside the allowed base directory
 - **404 Not Found**: Wrong endpoint or local file not found
-- **500 Internal Server Error**: Download or processing errors
+- **500 Internal Server Error**: Invalid base64 encoding, download or processing errors
 
 ## Local File Serving
 
@@ -107,18 +154,27 @@ BASE_DIR = '/var/www/files'
 
 - **Path Validation**: Absolute path resolution prevents `../` directory traversal
 - **Base Directory Restriction**: Files outside `BASE_DIR` are rejected
-- **File Existence Check**: Returns 404 if file doesn't exist
+- **File Existence Check**: Returns error if file doesn't exist
 - **Regular File Check**: Only serves regular files (not directories or special files)
+- **Data Validation**: Only accepts `url:` or `path:` prefixes after decoding
 
 ### Example Local File Request
 
 ```python
 import requests
+import base64
+
+def encode_data(data_type, value):
+    data_str = f"{data_type}:{value}"
+    reversed_str = data_str[::-1]
+    encoded_bytes = base64.b64encode(reversed_str.encode('utf-8'))
+    return encoded_bytes.decode('utf-8')
 
 # Serve a file from the server's filesystem
+encoded_data = encode_data('path', './data/report.pdf')
 response = requests.post(
     'http://localhost:30080/test',
-    json={'path': './data/report.pdf'},
+    json={'data': encoded_data},
     stream=True
 )
 
@@ -140,28 +196,36 @@ python3 main.py
 python3 test_server.py
 ```
 
+The test suite includes:
+1. **URL Download Test**: Tests URL download with redirects
+2. **Local File Serving Test**: Tests local file serving with integrity verification
+3. **Security Test**: Tests path traversal attack prevention
+4. **Invalid Data Type Test**: Tests error handling for invalid data prefixes
+
 ### Content Extraction
 
 The test script automatically extracts the real downloaded content by skipping the first 1,024,000 random bytes:
 
 - **Total Response**: 1,024,000 bytes random + real content
 - **Extracted Content**: Only the downloaded file content
-- **Saved File**: `extracted_real_content.dat`
-
-The test script will:
-1. Download the complete response from the server
-2. Skip the first 1,024,000 bytes (random prefix)
-3. Extract only the real downloaded content
-4. Save it to `extracted_real_content.dat`
-5. Show a preview of the real content
+- **Saved Files**: `extracted_url_content.dat`, `extracted_local_file.txt`
 
 ### Manual Content Extraction
 
 To manually extract the real content from downloaded files:
 
 ```python
-import os
+import base64
 
+# Helper function to decode the data format
+def decode_data(encoded_data):
+    """Decode base64 encoded and reversed data string"""
+    decoded_bytes = base64.b64decode(encoded_data)
+    decoded_str = decoded_bytes.decode('utf-8')
+    reversed_str = decoded_str[::-1]  # Reverse back
+    return reversed_str
+
+# Extract real content from response
 RANDOM_PREFIX_SIZE = 1024000  # 1,024,000 bytes
 
 with open('downloaded_file.dat', 'rb') as f:
@@ -183,6 +247,7 @@ print(f"Real content: {len(real_content):,} bytes")
 - **URL Redirection Support**: Built-in support for HTTP redirects using the `requests` library
 - **Local File Access**: Reads local files in 8KB chunks for memory efficiency
 - **Security**: Path sanitization using `os.path.abspath()` to prevent directory traversal
+- **Data Encoding**: Base64 + reverse encoding for obfuscation
 - **Timeout**: 30-second timeout for URL downloads to prevent hanging
 - **Dual Mode**: Supports both URL downloads and local file serving in a single endpoint
 
@@ -202,7 +267,9 @@ run_server(host='0.0.0.0', port=30080)  # Listen on all interfaces, default port
 ## Error Scenarios Handled
 
 - Invalid JSON request body
-- Missing both 'url' and 'path' fields, or both provided together
+- Missing 'data' field
+- Invalid base64 encoding
+- Invalid data type prefix (not `url:` or `path:`)
 - Network errors during URL download
 - HTTP errors (404, 500, etc.) from target URL
 - Timeouts during URL download

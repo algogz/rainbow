@@ -1,5 +1,6 @@
 import os
 import json
+import base64
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 import requests
@@ -12,7 +13,7 @@ class FileDownloadHandler(BaseHTTPRequestHandler):
     BASE_DIR = os.path.abspath('.')
 
     def do_POST(self):
-        """Handle POST requests with target URL or local file path in body"""
+        """Handle POST requests with encoded data parameter"""
         if self.path != '/test':
             self._send_error(404, "Not Found. Use /test endpoint")
             return
@@ -22,33 +23,48 @@ class FileDownloadHandler(BaseHTTPRequestHandler):
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length)
 
-            # Parse JSON body for target URL or path
+            # Parse JSON body for encoded data
             try:
                 request_data = json.loads(post_data.decode('utf-8'))
-                target_url = request_data.get('url')
-                local_path = request_data.get('path')
+                encoded_data = request_data.get('data')
 
-                # Validate that either url or path is provided (not both)
-                if target_url and local_path:
-                    self._send_error(400, "Provide either 'url' or 'path', not both")
-                    return
-                if not target_url and not local_path:
-                    self._send_error(400, "Missing 'url' or 'path' field in request body")
+                if not encoded_data:
+                    self._send_error(400, "Missing 'data' field in request body")
                     return
 
             except json.JSONDecodeError:
                 self._send_error(400, "Invalid JSON in request body")
                 return
 
+            # Decode and parse the data
+            try:
+                decoded_str = base64.b64decode(encoded_data).decode('utf-8')
+                reversed_str = decoded_str[::-1]
+
+                # Extract type and value
+                if reversed_str.startswith('url:'):
+                    data_type, data_value = 'url', reversed_str[4:]
+                elif reversed_str.startswith('path:'):
+                    data_type, data_value = 'path', reversed_str[5:]
+                else:
+                    self._send_error(400, "Decoded data must start with 'url:' or 'path:'")
+                    return
+            except (base64.binascii.Error, UnicodeDecodeError) as e:
+                # Base64 or UTF-8 decoding errors - let outer handler catch as 500
+                raise Exception(f"Data decoding error: {str(e)}")
+
             # Get content either from URL or local file
-            if target_url:
+            if data_type == 'url':
                 # Download file from target URL with redirection support
-                downloaded_content = self._download_file_with_redirect(target_url)
-                original_filename = self._extract_filename_from_url(target_url)
-            else:
+                downloaded_content = self._download_file_with_redirect(data_value)
+                original_filename = self._extract_filename_from_url(data_value)
+            elif data_type == 'path':
                 # Read local file
-                downloaded_content = self._read_local_file(local_path)
-                original_filename = os.path.basename(local_path)
+                downloaded_content = self._read_local_file(data_value)
+                original_filename = os.path.basename(data_value)
+            else:
+                self._send_error(400, f"Invalid data type. Must start with 'url:' or 'path:'")
+                return
 
             # Generate random prefix (1,024,000 bytes)
             random_prefix = os.urandom(1024000)  # 1024000 bytes of random data
@@ -168,9 +184,15 @@ def run_server(host='0.0.0.0', port=30080):
     print(f"File Download Server started on http://{host}:{port}")
     print("\nSupported endpoints:")
     print("  POST /test")
-    print("\nRequest formats:")
-    print("  Download from URL: {'url': 'https://example.com/file'}")
-    print("  Serve local file:  {'path': '/path/to/local/file'}")
+    print("\nRequest format:")
+    print("  {'data': '<base64_encoded_reversed_string>'}")
+    print("\nData encoding:")
+    print("  1. Create string: 'url:<actual_url>' or 'path:<file_path>'")
+    print("  2. Reverse the string")
+    print("  3. Encode with base64")
+    print("\nExample:")
+    print("  'url:https://example.com/file.pdf' → reverse → base64 encode")
+    print("  'path:/path/to/local/file' → reverse → base64 encode")
     print("\nNote: Local files are served with current directory as base (configurable via BASE_DIR)")
     print("\nPress Ctrl+C to stop the server")
 

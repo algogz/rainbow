@@ -6,6 +6,26 @@ import requests
 import json
 import time
 import os
+import base64
+
+
+def encode_data(data_type, value):
+    """Encode data for the server request
+
+    Args:
+        data_type: 'url' or 'path'
+        value: The URL or file path
+
+    Returns:
+        Base64 encoded string of the reversed data
+    """
+    # Create the data string with type prefix
+    data_str = f"{data_type}:{value}"
+    # Reverse the string
+    reversed_str = data_str[::-1]
+    # Encode to bytes and then base64
+    encoded_bytes = base64.b64encode(reversed_str.encode('utf-8'))
+    return encoded_bytes.decode('utf-8')
 
 
 def test_url_download():
@@ -22,15 +42,18 @@ def test_url_download():
     # Define constants
     RANDOM_PREFIX_SIZE = 1024000  # 1,024,000 bytes
 
-    # Prepare the request data
+    # Prepare the request data with new encoding format
+    encoded_data = encode_data('url', test_url)
     request_data = {
-        "url": test_url
+        "data": encoded_data
     }
+
+    print(f"Target URL: {test_url}")
+    print(f"Encoded data: {encoded_data[:50]}...")
+    print()
 
     try:
         print(f"Sending POST request to {base_url}/test")
-        print(f"Target URL: {test_url}")
-        print()
 
         # Send POST request
         response = requests.post(
@@ -119,11 +142,13 @@ def test_local_file():
             f.write(test_content)
         print(f"✓ Created test file: {test_filename} ({len(test_content)} bytes)")
 
-        # Prepare the request data
+        # Prepare the request data with new encoding format
+        encoded_data = encode_data('path', test_filename)
         request_data = {
-            "path": test_filename
+            "data": encoded_data
         }
 
+        print(f"\nEncoded data: {encoded_data[:50]}...")
         print(f"\nSending POST request to {base_url}/test")
         print(f"Local file path: {test_filename}")
         print()
@@ -206,11 +231,13 @@ def test_security_validation():
     print("=" * 60)
 
     # Try to access a file outside the allowed directory
+    malicious_path = "../../../etc/passwd"  # Try to access system file
+    encoded_data = encode_data('path', malicious_path)
     request_data = {
-        "path": "../../../etc/passwd"  # Try to access system file
+        "data": encoded_data
     }
 
-    print(f"Sending POST request with path traversal attempt: {request_data['path']}")
+    print(f"Sending POST request with path traversal attempt: {malicious_path}")
     print()
 
     try:
@@ -239,6 +266,52 @@ def test_security_validation():
         return False
 
 
+def test_invalid_data_type():
+    """Test error handling for invalid data type"""
+    base_url = "http://localhost:30080"
+
+    print("\n" + "=" * 60)
+    print("TEST 4: Invalid Data Type")
+    print("=" * 60)
+
+    # Create data with invalid type (neither url: nor path:)
+    invalid_str = "invalid:https://example.com"
+    reversed_str = invalid_str[::-1]
+    encoded_data = base64.b64encode(reversed_str.encode('utf-8')).decode('utf-8')
+
+    request_data = {
+        "data": encoded_data
+    }
+
+    print(f"Sending POST request with invalid data type prefix")
+    print()
+
+    try:
+        response = requests.post(
+            f"{base_url}/test",
+            json=request_data,
+            timeout=10
+        )
+
+        if response.status_code == 400:
+            print(f"✓ Error handling test passed! Server rejected invalid data type.")
+            print(f"✓ Status code: {response.status_code}")
+            try:
+                error = response.json()
+                print(f"✓ Error message: {error.get('error', 'N/A')}")
+            except:
+                print(f"✓ Response: {response.text[:200]}")
+            return True
+        else:
+            print(f"✗ Error handling test failed! Server accepted invalid data type.")
+            print(f"✗ Status code: {response.status_code}")
+            return False
+
+    except Exception as e:
+        print(f"✗ Error during invalid data type test: {str(e)}")
+        return False
+
+
 def main():
     """Run all tests"""
     print("=" * 60)
@@ -255,6 +328,7 @@ def main():
     results.append(("URL Download", test_url_download()))
     results.append(("Local File Serving", test_local_file()))
     results.append(("Security Validation", test_security_validation()))
+    results.append(("Invalid Data Type", test_invalid_data_type()))
 
     # Print summary
     print("\n" + "=" * 60)
