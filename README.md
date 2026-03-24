@@ -1,13 +1,15 @@
 # File Download Web Server
 
-A simple Python web server that accepts HTTP POST requests with a target URL, downloads the file from that URL (with redirection support), and returns the file content prefixed with 1,024,000 bytes of random data.
+A simple Python web server that accepts HTTP POST requests to either download files from a URL or serve local files from the server's filesystem, with all responses prefixed with 1,024,000 bytes of random data.
 
 ## Features
 
 - **HTTP POST Endpoint**: `/test` endpoint that accepts JSON requests
-- **File Download**: Downloads files from any URL with automatic redirection support
-- **Random Prefix**: Prepends 1,024,000 bytes of random data to downloaded content
-- **Timestamp Filenames**: Generates response filenames with timestamp format (e.g., `202511232358.dat`)
+- **URL Download**: Downloads files from any URL with automatic redirection support
+- **Local File Serving**: Serves files from the server's local filesystem with security validation
+- **Random Prefix**: Prepends 1,024,000 bytes of random data to all file content
+- **Timestamp Filenames**: Generates response filenames with timestamp + original filename (e.g., `202511232358_example.pdf`)
+- **Security**: Path validation prevents directory traversal attacks
 - **Error Handling**: Comprehensive error handling with appropriate HTTP status codes
 
 ## Installation
@@ -29,12 +31,21 @@ The server will start on `http://localhost:30080` by default.
 
 ### Make Requests
 
-Send POST requests to `/test` endpoint with JSON body:
+Send POST requests to `/test` endpoint with JSON body.
 
+**Download from URL:**
 ```bash
 curl -X POST http://localhost:30080/test \
   -H "Content-Type: application/json" \
   -d '{"url": "https://example.com/file.pdf"}' \
+  --output downloaded_file.dat
+```
+
+**Serve local file:**
+```bash
+curl -X POST http://localhost:30080/test \
+  -H "Content-Type: application/json" \
+  -d '{"path": "/path/to/local/file.pdf"}' \
   --output downloaded_file.dat
 ```
 
@@ -45,24 +56,77 @@ curl -X POST http://localhost:30080/test \
 **Headers**:
 - `Content-Type: application/json`
 
-**Body**:
+**Body** (choose one):
 ```json
 {
   "url": "https://example.com/target-file"
 }
 ```
 
+OR
+
+```json
+{
+  "path": "/path/to/local/file"
+}
+```
+
+**Security Note**: Local file serving is restricted to files within the server's current working directory by default. This can be configured by modifying the `BASE_DIR` constant in `main.py`.
+
 ### Response Format
 
 **Success Response** (Status: 200):
 - **Content-Type**: `application/octet-stream`
-- **Content-Disposition**: `attachment; filename="YYYYMMDDHHMM.dat"`
-- **Content**: 1,024,000 bytes of random data + downloaded file content
+- **Content-Disposition**: `attachment; filename="YYYYMMDDHHMM_original_filename.ext"` (or `.dat` if no original filename)
+- **Content**: 1,024,000 bytes of random data + file content
 
 **Error Responses**:
-- **400 Bad Request**: Invalid JSON or missing URL
-- **404 Not Found**: Wrong endpoint
+- **400 Bad Request**: Invalid JSON, missing both 'url' and 'path', or both provided
+- **403 Forbidden**: Local file path is outside the allowed base directory
+- **404 Not Found**: Wrong endpoint or local file not found
 - **500 Internal Server Error**: Download or processing errors
+
+## Local File Serving
+
+### Security Configuration
+
+The server restricts local file access using the `BASE_DIR` constant in `main.py`:
+
+```python
+# Default: Allow files from current directory only
+BASE_DIR = os.path.abspath('.')
+
+# To allow all paths (not recommended for production):
+BASE_DIR = ''
+
+# To restrict to a specific directory:
+BASE_DIR = '/var/www/files'
+```
+
+### Security Features
+
+- **Path Validation**: Absolute path resolution prevents `../` directory traversal
+- **Base Directory Restriction**: Files outside `BASE_DIR` are rejected
+- **File Existence Check**: Returns 404 if file doesn't exist
+- **Regular File Check**: Only serves regular files (not directories or special files)
+
+### Example Local File Request
+
+```python
+import requests
+
+# Serve a file from the server's filesystem
+response = requests.post(
+    'http://localhost:30080/test',
+    json={'path': './data/report.pdf'},
+    stream=True
+)
+
+if response.status_code == 200:
+    with open('downloaded_report.pdf', 'wb') as f:
+        # Skip first 1MB (random prefix)
+        f.write(response.content[1024000:])
+```
 
 ## Testing
 
@@ -116,9 +180,11 @@ print(f"Real content: {len(real_content):,} bytes")
 ## Example Implementation Details
 
 - **Random Data Generation**: Uses `os.urandom(1024000)` for cryptographically secure random bytes
-- **Redirection Support**: Built-in support for HTTP redirects using the `requests` library
-- **Memory Efficiency**: Streams large files in 8KB chunks to handle files of any size
-- **Timeout**: 30-second timeout for downloads to prevent hanging
+- **URL Redirection Support**: Built-in support for HTTP redirects using the `requests` library
+- **Local File Access**: Reads local files in 8KB chunks for memory efficiency
+- **Security**: Path sanitization using `os.path.abspath()` to prevent directory traversal
+- **Timeout**: 30-second timeout for URL downloads to prevent hanging
+- **Dual Mode**: Supports both URL downloads and local file serving in a single endpoint
 
 ## Configuration
 
@@ -136,8 +202,11 @@ run_server(host='0.0.0.0', port=30080)  # Listen on all interfaces, default port
 ## Error Scenarios Handled
 
 - Invalid JSON request body
-- Missing URL field in request
-- Network errors during download
+- Missing both 'url' and 'path' fields, or both provided together
+- Network errors during URL download
 - HTTP errors (404, 500, etc.) from target URL
-- Timeouts during download
+- Timeouts during URL download
 - Invalid URLs
+- Local file not found
+- Local file path outside allowed base directory
+- Permission denied when reading local file
