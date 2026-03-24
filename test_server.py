@@ -27,13 +27,13 @@ def test_server():
     }
 
     try:
-        print(f"Sending POST request to {base_url}/download")
+        print(f"Sending POST request to {base_url}/test")
         print(f"Target URL: {test_url}")
         print()
 
         # Send POST request
         response = requests.post(
-            f"{base_url}/download",
+            f"{base_url}/test",
             json=request_data,
             timeout=60,
             stream=True  # Stream the response to handle large files

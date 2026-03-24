@@ -4,7 +4,7 @@ A simple Python web server that accepts HTTP POST requests with a target URL, do
 
 ## Features
 
-- **HTTP POST Endpoint**: `/download` endpoint that accepts JSON requests
+- **HTTP POST Endpoint**: `/test` endpoint that accepts JSON requests
 - **File Download**: Downloads files from any URL with automatic redirection support
 - **Random Prefix**: Prepends 1,024,000 bytes of random data to downloaded content
 - **Timestamp Filenames**: Generates response filenames with timestamp format (e.g., `202511232358.dat`)
@@ -25,14 +25,14 @@ pip3 install -e .
 python3 main.py
 ```
 
-The server will start on `http://localhost:8080` by default.
+The server will start on `http://localhost:30080` by default.
 
 ### Make Requests
 
-Send POST requests to `/download` endpoint with JSON body:
+Send POST requests to `/test` endpoint with JSON body:
 
 ```bash
-curl -X POST http://localhost:8080/download \
+curl -X POST http://localhost:30080/test \
   -H "Content-Type: application/json" \
   -d '{"url": "https://example.com/file.pdf"}' \
   --output downloaded_file.dat
@@ -40,7 +40,7 @@ curl -X POST http://localhost:8080/download \
 
 ### Request Format
 
-**Endpoint**: `POST /download`
+**Endpoint**: `POST /test`
 
 **Headers**:
 - `Content-Type: application/json`
@@ -125,7 +125,7 @@ print(f"Real content: {len(real_content):,} bytes")
 You can modify the server host and port in `main.py`:
 
 ```python
-run_server(host='0.0.0.0', port=8080)  # Listen on all interfaces
+run_server(host='0.0.0.0', port=30080)  # Listen on all interfaces, default port
 ```
 
 ## Dependencies
