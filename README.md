@@ -184,6 +184,53 @@ if response.status_code == 200:
         f.write(response.content[1024000:])
 ```
 
+## Client Script
+
+A convenient client script `dl.py` is provided for downloading files via the rainbow server. It automatically handles the encoding/decoding and removes the random prefix.
+
+### Usage
+
+```bash
+# Download from URL
+python dl.py https://example.com/file.pdf
+
+# Serve local file from server
+python dl.py /path/to/local/file.txt
+
+# Specify custom output filename
+python dl.py https://example.com/file.pdf -o my_file.pdf
+
+# Use custom server URL
+python dl.py https://example.com/file.pdf --server http://remote-server:30080
+```
+
+### How It Works
+
+The client script:
+1. **Auto-detects mode**: If location starts with `http://` or `https://`, uses URL mode; otherwise uses local file mode
+2. **Encodes the request**: Applies the reverse + base64 encoding required by the server
+3. **Downloads the file**: Streams the response from the server
+4. **Removes the prefix**: Strips the 1MB random prefix from the response
+5. **Saves the file**: Writes the real content to disk with the correct filename
+
+### Example Output
+
+```
+$ python dl.py https://httpbin.org/json
+Mode: URL download
+URL: https://httpbin.org/json
+
+Connecting to server: http://localhost:30080/test
+
+Receiving data...
+Total size: 1,024,429 bytes
+Random prefix: 1,024,000 bytes (removed)
+Real content: 429 bytes
+
+✓ Saved to: json
+✓ File size: 429 bytes
+```
+
 ## Testing
 
 Run the test script to verify the server works:

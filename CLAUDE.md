@@ -104,3 +104,31 @@ encoded = encode_data('url', 'https://example.com/file.pdf')
 # or
 encoded = encode_data('path', './local/file.pdf')
 ```
+
+## Client Script (`dl.py`)
+
+A convenient client script is provided for downloading files. It handles:
+- Auto-detection of mode (URL vs local file) based on input
+- Encoding/decoding of the data parameter
+- Removal of the random prefix from server responses
+- Proper filename handling
+
+### Usage
+```bash
+# Download from URL
+python dl.py https://example.com/file.pdf
+
+# Serve local file
+python dl.py /path/to/local/file.txt
+
+# Custom output filename
+python dl.py https://example.com/file.pdf -o my_file.pdf
+
+# Custom server URL
+python dl.py https://example.com/file.pdf --server http://remote-server:30080
+```
+
+### Mode Detection
+- If location starts with `http://` or `https://` (case-insensitive) → URL mode
+- Otherwise → Local file mode
+
