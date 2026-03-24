@@ -10,7 +10,7 @@ from datetime import datetime
 class FileDownloadHandler(BaseHTTPRequestHandler):
     # Allowed base directory for local file serving (empty means all paths allowed)
     # Set this to restrict file access to a specific directory
-    BASE_DIR = os.path.abspath('.')
+    BASE_DIR = ''  # No restriction - any file accessible by the server can be downloaded
 
     def do_POST(self):
         """Handle POST requests with encoded data parameter"""

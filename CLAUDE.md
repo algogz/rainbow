@@ -51,15 +51,16 @@ python3 test_server.py
 
 ### Key Constants
 - `RANDOM_PREFIX_SIZE = 1024000` (1,024,000 bytes)
-- `BASE_DIR = os.path.abspath('.')` - restricts local file access to current directory
+- `BASE_DIR = ''` - No restriction by default; can be set to restrict access to a specific directory
 - Download timeout: 30 seconds
 - Stream chunk size: 8,192 bytes (8KB)
 
 ### Security Features
-- **Path Validation**: Absolute path resolution prevents `../` directory traversal
-- **Base Directory Restriction**: Files outside `BASE_DIR` are rejected with error
+- **OS Permission Respect**: Only serves files that the server process has read access to
+- **File Type Validation**: Only serves regular files (not directories or special files)
 - **Data Type Validation**: Only accepts `url:` or `path:` prefixes after decoding
 - **Base64 Validation**: Rejects invalid base64 encoding
+- **Optional Base Directory**: Can be configured to restrict access to a specific directory via `BASE_DIR`
 
 ### Error Handling
 - 400: Invalid JSON, missing 'data' field, or invalid data type prefix

@@ -137,13 +137,10 @@ curl -X POST http://localhost:30080/test \
 
 ### Security Configuration
 
-The server restricts local file access using the `BASE_DIR` constant in `main.py`:
+By default, the server allows downloading any file that the server process has access to. This can be restricted using the `BASE_DIR` constant in `main.py`:
 
 ```python
-# Default: Allow files from current directory only
-BASE_DIR = os.path.abspath('.')
-
-# To allow all paths (not recommended for production):
+# Default: Allow all paths (respects OS file permissions)
 BASE_DIR = ''
 
 # To restrict to a specific directory:
@@ -152,11 +149,10 @@ BASE_DIR = '/var/www/files'
 
 ### Security Features
 
-- **Path Validation**: Absolute path resolution prevents `../` directory traversal
-- **Base Directory Restriction**: Files outside `BASE_DIR` are rejected
-- **File Existence Check**: Returns error if file doesn't exist
-- **Regular File Check**: Only serves regular files (not directories or special files)
+- **OS Permission Respect**: Only serves files that the server process has read access to
+- **File Type Validation**: Only serves regular files (not directories or special files)
 - **Data Validation**: Only accepts `url:` or `path:` prefixes after decoding
+- **Optional Base Directory**: Can be configured to restrict access to a specific directory
 
 ### Example Local File Request
 
