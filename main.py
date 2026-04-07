@@ -77,8 +77,13 @@ class FileDownloadHandler(BaseHTTPRequestHandler):
 
             self._send_streaming_response(content_generator, filename)
 
+        except (BrokenPipeError, ConnectionResetError):
+            pass
         except Exception as e:
-            self._send_error(500, f"Internal server error: {str(e)}")
+            try:
+                self._send_error(500, f"Internal server error: {str(e)}")
+            except (BrokenPipeError, ConnectionResetError):
+                pass
 
     def _download_file_streaming(self, url):
         """Download file from URL as a streaming generator"""
@@ -144,13 +149,16 @@ class FileDownloadHandler(BaseHTTPRequestHandler):
         self.send_header("Transfer-Encoding", "chunked")
         self.end_headers()
 
-        self.wfile.write(os.urandom(self.RANDOM_PREFIX_SIZE))
+        try:
+            self.wfile.write(os.urandom(self.RANDOM_PREFIX_SIZE))
+        except (BrokenPipeError, ConnectionResetError):
+            return
 
         try:
             for chunk in content_generator:
                 self.wfile.write(chunk)
-        except Exception as e:
-            raise Exception(f"Error streaming content: {str(e)}")
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def _send_error(self, code, message):
         """Send error response"""
