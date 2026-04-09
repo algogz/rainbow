@@ -2,7 +2,7 @@ import os
 import json
 import base64
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 import requests
 from datetime import datetime
 
@@ -37,6 +37,51 @@ class FileDownloadHandler(BaseHTTPRequestHandler):
                 self._send_error(400, "Invalid JSON in request body")
                 return
 
+            self._handle_request(encoded_data)
+
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except Exception as e:
+            try:
+                self._send_error(500, f"Internal server error: {str(e)}")
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+    def do_GET(self):
+        """Handle GET requests with encoded data in query string"""
+        # Parse the path to handle query string
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if path != "/test":
+            self._send_error(404, "Not Found. Use /test endpoint")
+            return
+
+        try:
+            # Parse query string
+            query_params = parse_qs(parsed.query)
+            encoded_data = query_params.get("data")
+
+            if not encoded_data or len(encoded_data) == 0:
+                self._send_error(400, "Missing 'data' query parameter")
+                return
+
+            # get first value if list
+            encoded_data = encoded_data[0] if isinstance(encoded_data, list) else encoded_data
+
+            self._handle_request(encoded_data)
+
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except Exception as e:
+            try:
+                self._send_error(500, f"Internal server error: {str(e)}")
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+    def _handle_request(self, encoded_data):
+        """Common handler for both POST and GET requests"""
+        try:
             # Decode and parse the data
             try:
                 decoded_str = base64.b64decode(encoded_data).decode("utf-8")
@@ -213,9 +258,8 @@ def run_server(host="0.0.0.0", port=30080):
 
     print(f"File Download Server started on http://{host}:{port}")
     print("\nSupported endpoints:")
-    print("  POST /test")
-    print("\nRequest format:")
-    print("  {'data': '<base64_encoded_reversed_string>'}")
+    print("  POST /test  - with JSON body: {'data': '<encoded>'}")
+    print("  GET /test   - with query: ?data=<encoded>")
     print("\nData encoding:")
     print("  1. Create string: 'url:<actual_url>' or 'path:<file_path>'")
     print("  2. Reverse the string")

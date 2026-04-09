@@ -32,7 +32,7 @@ def encode_data(data_type, value):
     return encoded_bytes.decode('utf-8')
 
 
-def download_file(server_url, location, output_filename=None):
+def download_file(server_url, location, output_filename=None, method='POST'):
     """Download a file via the rainbow server
 
     Args:
@@ -40,6 +40,7 @@ def download_file(server_url, location, output_filename=None):
         location: URL or local file path to download
         output_filename: Optional output filename. If not provided, uses the
                         filename from the server response or a generated name.
+        method: HTTP method to use ('POST' or 'GET')
 
     Returns:
         The path to the saved file, or None on failure.
@@ -59,15 +60,40 @@ def download_file(server_url, location, output_filename=None):
     # Encode the data
     encoded_data = encode_data(data_type, location)
 
+    # Build request details
+    request_url = f"{server_url}/test"
+    request_body = {"data": encoded_data}
+    request_query = f"data={encoded_data}"
+
+    # Print request info
+    print("\n" + "=" * 50)
+    print("REQUEST INFO")
+    print("=" * 50)
+    print(f"Method:  {method}")
+    print(f"URL:     {request_url}")
+    if method == 'GET':
+        print(f"Query:   {request_query}")
+    else:
+        print(f"Body:    {request_body}")
+    print("=" * 50 + "\n")
+
     # Send request to server
-    print(f"\nConnecting to server: {server_url}/test")
+    print(f"Connecting to server: {server_url}/test")
     try:
-        response = requests.post(
-            f"{server_url}/test",
-            json={"data": encoded_data},
-            stream=True,
-            timeout=300  # 5 minute timeout for large files
-        )
+        if method == 'GET':
+            response = requests.get(
+                f"{server_url}/test",
+                params={"data": encoded_data},
+                stream=True,
+                timeout=300  # 5 minute timeout for large files
+            )
+        else:
+            response = requests.post(
+                f"{server_url}/test",
+                json={"data": encoded_data},
+                stream=True,
+                timeout=300  # 5 minute timeout for large files
+            )
     except requests.exceptions.ConnectionError:
         print(f"Error: Could not connect to server at {server_url}")
         print("Make sure the server is running (python3 main.py)")
@@ -154,11 +180,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:
-  # Download from URL
+  # Download from URL (POST mode)
   python dl.py https://example.com/file.pdf
 
-  # Serve local file from server
+  # Serve local file from server (POST mode)
   python dl.py /path/to/local/file.txt
+
+  # Use GET mode with query string
+  python dl.py /path/to/local/file.txt -m GET
 
   # Specify custom output filename
   python dl.py https://example.com/file.pdf -o my_file.pdf
@@ -186,10 +215,18 @@ Examples:
         help='Server URL (default: http://localhost:30080)'
     )
 
+    parser.add_argument(
+        '-m', '--method',
+        dest='method',
+        choices=['POST', 'GET'],
+        default='POST',
+        help='HTTP method to use (default: POST)'
+    )
+
     args = parser.parse_args()
 
     # Download the file
-    result = download_file(args.server, args.location, args.output)
+    result = download_file(args.server, args.location, args.output, args.method)
 
     if result:
         sys.exit(0)
