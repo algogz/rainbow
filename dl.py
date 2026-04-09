@@ -236,8 +236,8 @@ Examples:
         '-m', '--method',
         dest='method',
         choices=['POST', 'GET'],
-        default='POST',
-        help='HTTP method to use (default: POST)'
+        default='GET',
+        help='HTTP method to use (default: GET)'
     )
 
     args = parser.parse_args()
