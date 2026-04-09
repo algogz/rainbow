@@ -58,9 +58,11 @@ class FileDownloadHandler(BaseHTTPRequestHandler):
 
             if data_type == "url":
                 original_filename = self._extract_filename_from_url(data_value)
+                content_size = self._get_url_content_size(data_value)
                 content_generator = self._download_file_streaming(data_value)
             elif data_type == "path":
                 original_filename = os.path.basename(data_value)
+                content_size = self._get_local_file_size(data_value)
                 content_generator = self._read_local_file_streaming(data_value)
             else:
                 self._send_error(
@@ -75,7 +77,7 @@ class FileDownloadHandler(BaseHTTPRequestHandler):
                 else f"{timestamp}.dat"
             )
 
-            self._send_streaming_response(content_generator, filename)
+            self._send_response_with_size(content_generator, content_size, filename)
 
         except (BrokenPipeError, ConnectionResetError):
             pass
@@ -108,19 +110,6 @@ class FileDownloadHandler(BaseHTTPRequestHandler):
         """Read local file as a streaming generator"""
         abs_path = os.path.abspath(file_path)
 
-        if self.BASE_DIR:
-            if not abs_path.startswith(self.BASE_DIR):
-                raise Exception(
-                    f"Access denied: file path is outside allowed directory. "
-                    f"Requested: {abs_path}, Allowed base: {self.BASE_DIR}"
-                )
-
-        if not os.path.exists(abs_path):
-            raise Exception(f"File not found: {file_path}")
-
-        if not os.path.isfile(abs_path):
-            raise Exception(f"Path is not a file: {file_path}")
-
         try:
             with open(abs_path, "rb") as f:
                 while True:
@@ -141,20 +130,64 @@ class FileDownloadHandler(BaseHTTPRequestHandler):
         except Exception:
             return None
 
-    def _send_streaming_response(self, content_generator, filename):
-        """Send streaming response - writes random prefix first, then streams content"""
+    def _get_local_file_size(self, file_path):
+        """Get the size of a local file"""
+        abs_path = os.path.abspath(file_path)
+
+        if self.BASE_DIR:
+            if not abs_path.startswith(self.BASE_DIR):
+                raise Exception(
+                    f"Access denied: file path is outside allowed directory. "
+                    f"Requested: {abs_path}, Allowed base: {self.BASE_DIR}"
+                )
+
+        if not os.path.exists(abs_path):
+            raise Exception(f"File not found: {file_path}")
+
+        if not os.path.isfile(abs_path):
+            raise Exception(f"Path is not a file: {file_path}")
+
+        return os.path.getsize(abs_path)
+
+    def _get_url_content_size(self, url):
+        """Get the content size of a URL by making a HEAD request"""
+        try:
+            response = requests.head(
+                url,
+                allow_redirects=True,
+                timeout=self.TIMEOUT_SECONDS,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; FileDownloader/1.0)"},
+            )
+            response.raise_for_status()
+
+            content_length = response.headers.get('Content-Length')
+            if content_length:
+                return int(content_length)
+            else:
+                raise Exception(f"Server does not provide Content-Length header for {url}. Cannot determine file size for streaming.")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Failed to get content size from {url}: {str(e)}")
+
+    def _send_response_with_size(self, content_generator, content_size, filename):
+        """Send response with known content size - writes random prefix first, then streams content"""
+        total_size = self.RANDOM_PREFIX_SIZE + content_size
+
         self.send_response(200)
         self.send_header("Content-Type", "application/octet-stream")
         self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
-        self.send_header("Transfer-Encoding", "chunked")
+        self.send_header("Content-Length", str(total_size))
         self.end_headers()
 
         try:
-            self.wfile.write(os.urandom(self.RANDOM_PREFIX_SIZE))
-        except (BrokenPipeError, ConnectionResetError):
-            return
+            # Write random prefix in chunks
+            remaining = self.RANDOM_PREFIX_SIZE
+            chunk_size = 8192
+            while remaining > 0:
+                chunk = os.urandom(min(chunk_size, remaining))
+                self.wfile.write(chunk)
+                remaining -= len(chunk)
 
-        try:
+            # Stream content
             for chunk in content_generator:
                 self.wfile.write(chunk)
         except (BrokenPipeError, ConnectionResetError):
