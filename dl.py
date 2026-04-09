@@ -132,6 +132,14 @@ def download_file(server_url, location, output_filename=None, method='POST'):
             print(f"Response: {response.text[:200]}")
         return None
 
+    # Print response headers
+    print("\n" + "=" * 50)
+    print("RESPONSE HEADERS")
+    print("=" * 50)
+    for key, value in response.headers.items():
+        print(f"{key}: {value}")
+    print("=" * 50 + "\n")
+
     # Get filename from response headers
     content_disposition = response.headers.get('Content-Disposition', '')
     filename = None

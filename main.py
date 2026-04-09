@@ -241,9 +241,10 @@ class FileDownloadHandler(BaseHTTPRequestHandler):
         total_size = self.RANDOM_PREFIX_SIZE + content_size
 
         self.send_response(200)
-        self.send_header("Content-Type", "application/octet-stream")
-        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Type", "video/mp4")
         self.send_header("Content-Length", str(total_size))
+        self.send_header("Server", "nginx")
+        self.send_header("Last-Modified", "Mon, 15 Jan 2024 12:00:00 GMT")
         self.end_headers()
 
         try:
