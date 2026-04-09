@@ -11,7 +11,17 @@ import base64
 import sys
 import os
 import requests
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.backends import default_backend
 
+# Load public key
+PUBLIC_KEY_PATH = os.path.join(os.path.dirname(__file__), 'public_key.pem')
+
+def load_public_key():
+    """Load RSA public key from file"""
+    with open(PUBLIC_KEY_PATH, 'rb') as f:
+        return serialization.load_pem_public_key(f.read(), backend=default_backend())
 
 def encode_data(data_type, value):
     """Encode data for the server request
@@ -21,15 +31,22 @@ def encode_data(data_type, value):
         value: The URL or file path
 
     Returns:
-        Base64 encoded string of the reversed data
+        Base64 encoded string of the RSA encrypted data
     """
     # Create the data string with type prefix
     data_str = f"{data_type}:{value}"
-    # Reverse the string
-    reversed_str = data_str[::-1]
-    # Encode to bytes and then base64
-    encoded_bytes = base64.b64encode(reversed_str.encode('utf-8'))
-    return encoded_bytes.decode('utf-8')
+    # Encrypt with public key
+    public_key = load_public_key()
+    encrypted = public_key.encrypt(
+        data_str.encode('utf-8'),
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+    # Base64 encode the encrypted data
+    return base64.b64encode(encrypted).decode('utf-8')
 
 
 def download_file(server_url, location, output_filename=None, method='POST'):

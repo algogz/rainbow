@@ -5,6 +5,18 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 import requests
 from datetime import datetime
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.backends import default_backend
+
+
+# Load private key at module level
+PRIVATE_KEY_PATH = os.path.join(os.path.dirname(__file__), 'private_key.pem')
+
+def load_private_key():
+    """Load RSA private key from file"""
+    with open(PRIVATE_KEY_PATH, 'rb') as f:
+        return serialization.load_pem_private_key(f.read(), password=None, backend=default_backend())
 
 
 class FileDownloadHandler(BaseHTTPRequestHandler):
@@ -84,21 +96,32 @@ class FileDownloadHandler(BaseHTTPRequestHandler):
         try:
             # Decode and parse the data
             try:
-                decoded_str = base64.b64decode(encoded_data).decode("utf-8")
-                reversed_str = decoded_str[::-1]
+                # Base64 decode
+                encrypted_data = base64.b64decode(encoded_data)
+                # RSA decrypt with private key
+                private_key = load_private_key()
+                decrypted_bytes = private_key.decrypt(
+                    encrypted_data,
+                    padding.OAEP(
+                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                        algorithm=hashes.SHA256(),
+                        label=None
+                    )
+                )
+                data_str = decrypted_bytes.decode('utf-8')
 
                 # Extract type and value
-                if reversed_str.startswith("url:"):
-                    data_type, data_value = "url", reversed_str[4:]
-                elif reversed_str.startswith("path:"):
-                    data_type, data_value = "path", reversed_str[5:]
+                if data_str.startswith("url:"):
+                    data_type, data_value = "url", data_str[4:]
+                elif data_str.startswith("path:"):
+                    data_type, data_value = "path", data_str[5:]
                 else:
                     self._send_error(
-                        400, "Decoded data must start with 'url:' or 'path:'"
+                        400, "Decrypted data must start with 'url:' or 'path:'"
                     )
                     return
             except (base64.binascii.Error, UnicodeDecodeError) as e:
-                # Base64 or UTF-8 decoding errors - let outer handler catch as 500
+                # Base64 or decryption errors - let outer handler catch as 500
                 raise Exception(f"Data decoding error: {str(e)}")
 
             if data_type == "url":

@@ -6,13 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A simple HTTP file download proxy server that accepts POST requests to either download files from a URL or serve local files from the server's filesystem. All responses are prepended with 1,024,000 bytes of cryptographically secure random data before being returned.
 
-**Data Encoding**: The server uses a custom encoding scheme where the data parameter is a base64-encoded string containing a reversed type prefix (`url:` or `path:`) and value.
+**Data Encoding**: The server uses RSA encryption with OAEP padding for secure data encoding. The client encrypts data using a public key (RSA OAEP + SHA256), then base64 encodes it. The server decrypts using the corresponding private key.
 
 ## Development Commands
 
 ```bash
-# Install dependencies
-pip3 install -e .
+# Install dependencies (requires cryptography package)
+pip3 install cryptography
 
 # Start the server (runs on port 30080)
 python3 main.py
@@ -25,26 +25,26 @@ python3 test_server.py
 
 ### Server Implementation (`main.py`)
 - Built on Python's built-in `HTTPServer` and `BaseHTTPRequestHandler` - no external web framework
-- Single endpoint: `POST /test`
+- Endpoints: `POST /test` and `GET /test`
 - Default configuration: `0.0.0.0:30080`
 
 ### Data Encoding Scheme
 
 **Client Side (Encoding)**:
 1. Create string: `url:<actual_url>` or `path:<file_path>`
-2. Reverse the entire string: `:<lru_atuala>#` or `>:elif_atuala#` (reversed)
-3. Base64 encode the reversed string
+2. Encrypt with RSA public key (OAEP with SHA256/MGF1)
+3. Base64 encode the encrypted data
 
 **Server Side (Decoding)**:
 1. Base64 decode the input
-2. Reverse the string back to original
+2. RSA decrypt with private key (OAEP with SHA256/MGF1)
 3. Extract type prefix (`url:` or `path:`) and value
 
 ### Request Flow
 
-1. Client sends POST to `/test` with JSON: `{"data": "<base64_encoded_reversed_string>"}`
-2. Server base64 decodes and reverses the data string
-3. Server checks if decoded string starts with `url:` or `path:`
+1. Client sends POST/GET to `/test` with JSON body or query string: `{"data": "<base64_rsa_encrypted>"}`
+2. Server base64 decodes and RSA decrypts the data
+3. Server checks if decrypted string starts with `url:` or `path:`
 4. Server either downloads from URL or reads local file
 5. Server generates 1,024,000 bytes random prefix using `os.urandom()`
 6. Server returns: `random_prefix (1MB) + file_content`
@@ -89,21 +89,36 @@ All tests verify:
 
 ## Encoding Helper
 
-To encode data for requests:
+To encode data for requests (client uses public key):
 ```python
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import hashes, serialization
 import base64
 
-def encode_data(data_type, value):
+def encode_data(data_type, value, public_key):
     """Encode data for the server request"""
     data_str = f"{data_type}:{value}"
-    reversed_str = data_str[::-1]
-    encoded_bytes = base64.b64encode(reversed_str.encode('utf-8'))
-    return encoded_bytes.decode('utf-8')
+    encrypted = public_key.encrypt(
+        data_str.encode('utf-8'),
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+    return base64.b64encode(encrypted).decode('utf-8')
+```
 
-# Usage
-encoded = encode_data('url', 'https://example.com/file.pdf')
-# or
-encoded = encode_data('path', './local/file.pdf')
+## RSA Key Pair
+
+- **public_key.pem**: Used by clients (dl.py) to encrypt data
+- **private_key.pem**: Used by server (main.py) to decrypt data
+
+Generate new keys:
+```python
+from cryptography.hazmat.primitives.asymmetric import rsa
+private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+# Save keys...
 ```
 
 ## Client Script (`dl.py`)
