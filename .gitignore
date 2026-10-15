@@ -188,3 +188,6 @@ Thumbs.db
 # Project specific
 # Add any project-specific ignores below this line
 .serena
+
+# Local scratch/test data (contains large binaries)
+test/
