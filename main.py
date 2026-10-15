@@ -25,64 +25,83 @@ class FileDownloadHandler(BaseHTTPRequestHandler):
     CHUNK_SIZE = 8192
     RANDOM_PREFIX_SIZE = 1024000
 
+    ENDPOINT = "/test"
+    # Accepted GET query parameters. "seed" is the canonical name; "data" is
+    # kept as a backward-compatible alias for older clients.
+    QUERY_PARAMS = ("seed", "data")
+
     def do_POST(self):
-        """Handle POST requests with encoded data parameter"""
-        if self.path != "/test":
-            self._send_error(404, "Not Found. Use /test endpoint")
+        """Handle POST requests with encoded data in the JSON body."""
+        if not self._check_endpoint():
             return
 
-        try:
-            # Read request body
-            content_length = int(self.headers.get("Content-Length", 0))
-            post_data = self.rfile.read(content_length)
+        encoded_data = self._read_encoded_data_from_body()
+        if encoded_data is None:
+            return
 
-            # Parse JSON body for encoded data
-            try:
-                request_data = json.loads(post_data.decode("utf-8"))
-                encoded_data = request_data.get("data")
-
-                if not encoded_data:
-                    self._send_error(400, "Missing 'data' field in request body")
-                    return
-
-            except json.JSONDecodeError:
-                self._send_error(400, "Invalid JSON in request body")
-                return
-
-            self._handle_request(encoded_data)
-
-        except (BrokenPipeError, ConnectionResetError):
-            pass
-        except Exception as e:
-            try:
-                self._send_error(500, f"Internal server error: {str(e)}")
-            except (BrokenPipeError, ConnectionResetError):
-                pass
+        self._dispatch(encoded_data)
 
     def do_GET(self):
-        """Handle GET requests with encoded data in query string"""
-        # Parse the path to handle query string
-        parsed = urlparse(self.path)
-        path = parsed.path
-
-        if path != "/test":
-            self._send_error(404, "Not Found. Use /test endpoint")
+        """Handle GET requests with the encoded data in the query string."""
+        if not self._check_endpoint():
             return
 
+        encoded_data = self._read_encoded_data_from_query()
+        if encoded_data is None:
+            return
+
+        self._dispatch(encoded_data)
+
+    def _check_endpoint(self):
+        """Return True when the request targets the supported endpoint."""
+        if urlparse(self.path).path != self.ENDPOINT:
+            self._send_error(404, f"Not Found. Use {self.ENDPOINT} endpoint")
+            return False
+        return True
+
+    def _read_encoded_data_from_body(self):
+        """Extract the encoded payload from the JSON POST body.
+
+        Returns the encoded string, or None after sending an error response.
+        """
+        content_length = int(self.headers.get("Content-Length", 0))
+        post_data = self.rfile.read(content_length)
+
         try:
-            # Parse query string
-            query_params = parse_qs(parsed.query)
-            encoded_data = query_params.get("data")
+            request_data = json.loads(post_data.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            self._send_error(400, "Invalid JSON in request body")
+            return None
 
-            if not encoded_data or len(encoded_data) == 0:
-                self._send_error(400, "Missing 'data' query parameter")
-                return
+        encoded_data = request_data.get("data") if isinstance(request_data, dict) else None
+        if not encoded_data:
+            self._send_error(400, "Missing 'data' field in request body")
+            return None
 
-            # get first value if list
-            encoded_data = encoded_data[0] if isinstance(encoded_data, list) else encoded_data
+        return encoded_data
 
+    def _read_encoded_data_from_query(self):
+        """Extract the encoded payload from the GET query string.
+
+        Returns the encoded string, or None after sending an error response.
+        """
+        query_params = parse_qs(urlparse(self.path).query)
+
+        for name in self.QUERY_PARAMS:
+            values = query_params.get(name)
+            if values and values[0]:
+                return values[0]
+
+        self._send_error(
+            400,
+            f"Missing '{self.QUERY_PARAMS[0]}' query parameter",
+        )
+        return None
+
+    def _dispatch(self, encoded_data):
+        """Run the shared download pipeline, guarding against client aborts."""
+        try:
             self._handle_request(encoded_data)
-
         except (BrokenPipeError, ConnectionResetError):
             pass
         except Exception as e:
@@ -283,14 +302,14 @@ def run_server(host="0.0.0.0", port=30080):
     print(f"File Download Server started on http://{host}:{port}")
     print("\nSupported endpoints:")
     print("  POST /test  - with JSON body: {'data': '<encoded>'}")
-    print("  GET /test   - with query: ?data=<encoded>")
+    print("  GET /test   - with query: ?seed=<encoded>  ('data' also accepted)")
     print("\nData encoding:")
     print("  1. Create string: 'url:<actual_url>' or 'path:<file_path>'")
-    print("  2. Reverse the string")
-    print("  3. Encode with base64")
+    print("  2. RSA encrypt with public_key.pem (OAEP + SHA256)")
+    print("  3. Base64 encode")
     print("\nExample:")
-    print("  'url:https://example.com/file.pdf' → reverse → base64 encode")
-    print("  'path:/path/to/local/file' → reverse → base64 encode")
+    print("  'url:https://example.com/file.pdf' → RSA encrypt → base64 encode")
+    print("  'path:/path/to/local/file' → RSA encrypt → base64 encode")
     print(
         "\nNote: Local files are served with current directory as base (configurable via BASE_DIR)"
     )

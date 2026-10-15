@@ -44,7 +44,9 @@ python3 test_server.py
 
 ### Request Flow
 
-1. Client sends POST/GET to `/test` with JSON body or query string: `{"data": "<base64_rsa_encrypted>"}`
+1. Client sends `POST /test` with JSON body `{"data": "<base64_rsa_encrypted>"}`,
+   or `GET /test?seed=<base64_rsa_encrypted>` (`?data=` is kept as a legacy alias).
+   Both methods feed the same decode/download pipeline.
 2. Server base64 decodes and RSA decrypts the data
 3. Server checks if decrypted string starts with `url:` or `path:`
 4. Server either downloads from URL or reads local file
@@ -77,11 +79,12 @@ python3 test_server.py
 
 ## Testing
 
-The test script (`test_server.py`) includes four test suites:
+The test script (`test_server.py`) includes five test suites:
 1. **URL Download Test**: Validates URL download with redirects and random prefix
 2. **Local File Serving Test**: Creates test file and validates local file serving
-3. **Security Test**: Validates path traversal attack prevention
-4. **Invalid Data Type Test**: Validates error handling for invalid data prefixes
+3. **GET seed Test**: Validates `GET /test?seed=<payload>` returns the same payload as POST
+4. **Security Test**: Validates path traversal attack prevention
+5. **Invalid Data Type Test**: Validates error handling for invalid data prefixes
 
 All tests verify:
 - Correct endpoint response

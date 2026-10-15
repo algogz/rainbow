@@ -191,3 +191,7 @@ Thumbs.db
 
 # Local scratch/test data (contains large binaries)
 test/
+
+# Artifacts produced by test_server.py
+extracted_local_file.txt
+extracted_url_content.dat

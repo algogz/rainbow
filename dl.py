@@ -80,7 +80,7 @@ def download_file(server_url, location, output_filename=None, method='POST'):
     # Build request details
     request_url = f"{server_url}/test"
     request_body = {"data": encoded_data}
-    request_query = f"data={encoded_data}"
+    request_query = f"seed={encoded_data}"
 
     # Print request info
     print("\n" + "=" * 50)
@@ -100,7 +100,7 @@ def download_file(server_url, location, output_filename=None, method='POST'):
         if method == 'GET':
             response = requests.get(
                 f"{server_url}/test",
-                params={"data": encoded_data},
+                params={"seed": encoded_data},
                 stream=True,
                 timeout=300  # 5 minute timeout for large files
             )

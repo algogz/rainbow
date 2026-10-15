@@ -7,6 +7,17 @@ import json
 import time
 import os
 import base64
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives import hashes, serialization
+
+
+PUBLIC_KEY_PATH = os.path.join(os.path.dirname(__file__), 'public_key.pem')
+
+
+def load_public_key():
+    """Load the RSA public key used to encrypt request payloads"""
+    with open(PUBLIC_KEY_PATH, 'rb') as f:
+        return serialization.load_pem_public_key(f.read())
 
 
 def encode_data(data_type, value):
@@ -17,15 +28,20 @@ def encode_data(data_type, value):
         value: The URL or file path
 
     Returns:
-        Base64 encoded string of the reversed data
+        Base64 encoded string of the RSA-encrypted data
     """
     # Create the data string with type prefix
     data_str = f"{data_type}:{value}"
-    # Reverse the string
-    reversed_str = data_str[::-1]
-    # Encode to bytes and then base64
-    encoded_bytes = base64.b64encode(reversed_str.encode('utf-8'))
-    return encoded_bytes.decode('utf-8')
+    # Encrypt with the server's public key (must match main.py decryption)
+    encrypted = load_public_key().encrypt(
+        data_str.encode('utf-8'),
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None,
+        ),
+    )
+    return base64.b64encode(encrypted).decode('utf-8')
 
 
 def test_url_download():
@@ -222,6 +238,75 @@ def test_local_file():
             print(f"\n✓ Cleaned up test file: {test_filename}")
 
 
+def test_get_seed_download():
+    """Test GET download using the `seed` query parameter"""
+    base_url = "http://localhost:30080"
+
+    print("\n" + "=" * 60)
+    print("TEST 3: GET Download via seed Parameter")
+    print("=" * 60)
+
+    RANDOM_PREFIX_SIZE = 1024000  # 1,024,000 bytes
+
+    test_filename = "test_seed_file.txt"
+    test_content = b"GET seed parameter payload.\n" * 50
+
+    try:
+        with open(test_filename, 'wb') as f:
+            f.write(test_content)
+        print(f"✓ Created test file: {test_filename} ({len(test_content)} bytes)")
+
+        # Same encrypted payload POST would send, now passed as ?seed=
+        encoded_data = encode_data('path', test_filename)
+        print(f"\nEncoded data: {encoded_data[:50]}...")
+        print(f"Sending GET request to {base_url}/test?seed=...")
+
+        response = requests.get(
+            f"{base_url}/test",
+            params={"seed": encoded_data},
+            timeout=60,
+            stream=True,
+        )
+
+        if response.status_code != 200:
+            print(f"✗ Error! Status code: {response.status_code}")
+            print(f"✗ Response: {response.text[:200]}")
+            return False
+
+        print(f"✓ Success! Response status: {response.status_code}")
+
+        total_content = response.content
+        total_size = len(total_content)
+        if total_size <= RANDOM_PREFIX_SIZE:
+            print(f"✗ Error: Response size ({total_size}) is too small")
+            return False
+
+        received_content = total_content[RANDOM_PREFIX_SIZE:]
+        print(f"✓ Random prefix size: {RANDOM_PREFIX_SIZE:,} bytes (skipped)")
+        print(f"✓ Real content size: {len(received_content):,} bytes")
+
+        if received_content == test_content:
+            print("✓ Content integrity verified: GET seed returns the same payload as POST")
+            return True
+
+        print("✗ Error: Received content does not match original file")
+        return False
+
+    except requests.exceptions.ConnectionError:
+        print("✗ Connection Error: Server is not running!")
+        print("Please start the server first: python3 main.py")
+        return False
+
+    except Exception as e:
+        print(f"✗ Error: {str(e)}")
+        return False
+
+    finally:
+        if os.path.exists(test_filename):
+            os.remove(test_filename)
+            print(f"\n✓ Cleaned up test file: {test_filename}")
+
+
 def test_security_validation():
     """Test security: OS file permissions are respected"""
     base_url = "http://localhost:30080"
@@ -282,10 +367,8 @@ def test_invalid_data_type():
     print("TEST 4: Invalid Data Type")
     print("=" * 60)
 
-    # Create data with invalid type (neither url: nor path:)
-    invalid_str = "invalid:https://example.com"
-    reversed_str = invalid_str[::-1]
-    encoded_data = base64.b64encode(reversed_str.encode('utf-8')).decode('utf-8')
+    # Create an encryptable payload whose type prefix is neither url: nor path:
+    encoded_data = encode_data('invalid', 'https://example.com')
 
     request_data = {
         "data": encoded_data
@@ -335,6 +418,7 @@ def main():
 
     results.append(("URL Download", test_url_download()))
     results.append(("Local File Serving", test_local_file()))
+    results.append(("GET via seed Parameter", test_get_seed_download()))
     results.append(("Security Validation", test_security_validation()))
     results.append(("Invalid Data Type", test_invalid_data_type()))
 
